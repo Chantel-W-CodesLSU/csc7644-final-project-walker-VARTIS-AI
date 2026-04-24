@@ -39,16 +39,53 @@ def extract_info(text):
         "insurance_status": "uninsured",
         "matched_resources": [
             {
-                # Resource matched from internal hospital corpus
-                "name": "Grady Health Financial Assistance",
+                # Prescription assistance - matched via GoodRx API
+                "name": "GoodRx - Prescription Discount Program",
+                "address": "Available online and at local pharmacies",
+                "website": "https://www.goodrx.com",
+                "source": "findhelp_api",
+                "confidence": 0.97
+            },
+            {
+                # Medical care - matched from internal corpus
+                "name": "Good Samaritan Health Center",
+                "address": "1015 Donald Lee Hollowell Pkwy, Atlanta, GA 30318",
+                "website": "https://goodsamatlanta.org",
+                "phone": "N/A",
                 "source": "internal_corpus",
+                "confidence": 0.95
+            },
+            {
+                # Food assistance - matched from internal corpus
+                "name": "The Salvation Army Atlanta",
+                "address": "469 Marietta Street, Atlanta, GA 30313",
+                "website": "https://salvationarmyatlanta.org",
+                "source": "internal_corpus",
+                "confidence": 0.93
+            },
+            {
+                # Food and emergency assistance - matched from internal corpus
+                "name": "St. Charles Catholic Church",
+                "address": "Atlanta, GA",
+                "source": "internal_corpus",
+                "confidence": 0.91
+            },
+            {
+                # Utility assistance - matched via Georgia Power API
+                "name": "Georgia Power - Bill Assistance Program",
+                "address": "Atlanta, GA service area",
+                "website": "https://www.georgiapower.com/residential/billing-and-payments/payment-assistance.html",
+                "source": "findhelp_api",
                 "confidence": 0.94
             },
             {
-                # Resource matched via FindHelp.org API fallback
-                "name": "GoodRx Insulin Program",
-                "source": "findhelp_api",
-                "confidence": 0.88
+                # Utility and rent assistance - matched from internal corpus
+                "name": "Trinity Community Ministries",
+                "address": "21 Bell St NE, Atlanta, GA 30303",
+                "website": "https://www.tcmatlanta.org",
+                "phone": "(404) 577-6651",
+                "source": "internal_corpus",
+                "confidence": 0.92
             }
         ]
     }
