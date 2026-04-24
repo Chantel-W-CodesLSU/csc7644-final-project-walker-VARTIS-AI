@@ -67,14 +67,38 @@ python vartis_agent.py --mode extract --input intake_sample.txt
   "insurance_status": "uninsured",
   "matched_resources": [
     {
-      "name": "Grady Health Financial Assistance",
+      "name": "GoodRx - Prescription Discount Program",
+      "address": "Available online and at local pharmacies",
+      "website": "https://www.goodrx.com",
+      "source": "findhelp_api",
+      "confidence": 0.97
+    },
+    {
+      "name": "Good Samaritan Health Center",
+      "address": "1015 Donald Lee Hollowell Pkwy, Atlanta, GA 30318",
+      "website": "https://goodsamatlanta.org",
       "source": "internal_corpus",
+      "confidence": 0.95
+    },
+    {
+      "name": "The Salvation Army Atlanta",
+      "address": "469 Marietta Street, Atlanta, GA 30313",
+      "source": "internal_corpus",
+      "confidence": 0.93
+    },
+    {
+      "name": "Georgia Power - Bill Assistance Program",
+      "website": "https://www.georgiapower.com",
+      "source": "findhelp_api",
       "confidence": 0.94
     },
     {
-      "name": "GoodRx Insulin Program",
-      "source": "findhelp_api",
-      "confidence": 0.88
+      "name": "Trinity Community Ministries",
+      "address": "21 Bell St NE, Atlanta, GA 30303",
+      "website": "https://www.tcmatlanta.org",
+      "phone": "(404) 577-6651",
+      "source": "internal_corpus",
+      "confidence": 0.92
     }
   ]
 }
