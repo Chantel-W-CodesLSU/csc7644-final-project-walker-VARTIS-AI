@@ -28,7 +28,7 @@ def parse_arguments():
         "--mode",
         required=True,
         choices=["extract"],
-        help="Operation mode: 'extract' to process patient intake data"
+        help="Operation mode: extract to process patient intake data"
     )
     parser.add_argument(
         "--input",
@@ -48,19 +48,13 @@ def main():
     args = parse_arguments()
 
     if args.mode == "extract":
-        # Read the patient intake text file
         with open(args.input, "r") as f:
             text = f.read()
 
-        # Extract eligibility info and match resources
         output = extract_info(text)
 
-        # Print results as formatted JSON for advocate review
         print(json.dumps(output, indent=2))
 
 
 if __name__ == "__main__":
     main()
-```
-
-Hit **Ctrl + S** to save. Then tell me when done and we will create the second file!
