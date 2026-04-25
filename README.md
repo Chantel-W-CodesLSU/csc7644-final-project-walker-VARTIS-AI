@@ -55,8 +55,15 @@ Open .env and add your Anthropic API key:
 
 ## Running the Application
 ```bash
-python vartis_agent.py --mode extract --input intake_sample.txt
+streamlit run app.py
 ```
+
+The app will automatically open in your browser at:
+
+http://localhost:8501
+
+Paste a patient intake note into the text box on the left 
+and click Find Resources to see matched community resources.
 
 ### Expected Output
 ```json
