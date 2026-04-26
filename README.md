@@ -68,47 +68,22 @@ and click Find Resources to see matched community resources.
 ### Expected Output
 ```json
 {
-  "income_level": "below_200_fpl",
-  "zip_code": "30301",
-  "diagnosis_code": "E11.9",
-  "insurance_status": "uninsured",
-  "matched_resources": [
-    {
-      "name": "GoodRx - Prescription Discount Program",
-      "address": "Available online and at local pharmacies",
-      "website": "https://www.goodrx.com",
-      "source": "findhelp_api",
-      "confidence": 0.97
-    },
-    {
-      "name": "Good Samaritan Health Center",
-      "address": "1015 Donald Lee Hollowell Pkwy, Atlanta, GA 30318",
-      "website": "https://goodsamatlanta.org",
-      "source": "internal_corpus",
-      "confidence": 0.95
-    },
-    {
-      "name": "The Salvation Army Atlanta",
-      "address": "469 Marietta Street, Atlanta, GA 30313",
-      "source": "internal_corpus",
-      "confidence": 0.93
-    },
-    {
-      "name": "Georgia Power - Bill Assistance Program",
-      "website": "https://www.georgiapower.com",
-      "source": "findhelp_api",
-      "confidence": 0.94
-    },
-    {
-      "name": "Trinity Community Ministries",
-      "address": "21 Bell St NE, Atlanta, GA 30303",
-      "website": "https://www.tcmatlanta.org",
-      "phone": "(404) 577-6651",
-      "source": "internal_corpus",
-      "confidence": 0.92
-    }
-  ]
-}
+  ## Expected Output
+The system returns a structured eligibility profile with all matched 
+community resources organized by need type including:
+
+- 💊 Medication Assistance (GoodRx, NeedyMeds)
+- 🏥 Medical Care (Good Samaritan Health Center, Mercy Care Atlanta)
+- ⚡ Utility Assistance (LIHEAP, Georgia Power, Georgia Natural Gas, Atlanta Gas Light, Salvation Army LIHEAP, City of Atlanta)
+- 🍎 Food Assistance (Salvation Army Atlanta, Atlanta Community Food Bank)
+- 🏠 Rent Assistance (Trinity Community Ministries, United Way of Greater Atlanta)
+- 🏘️ Housing & Shelter (Atlanta Mission, Covenant House, Atlanta Housing Authority Section 8, Georgia DCA Section 8, Partners for HOME, Integrity Transitional Housing)
+- 💼 Employment Services (Georgia Department of Labor, Goodwill of North Georgia, WorkSource Atlanta, Atlanta Urban League, Year Up Atlanta)
+- 👗 Clothing Assistance (Dress for Success Atlanta, Salvation Army Thrift Store, St. Vincent de Paul Georgia, Open Hand Atlanta)
+
+All resources include address, phone number, website, source, 
+and confidence match score. Results are filterable by need type, 
+source, confidence level, and keyword search.
 ```
 
 ## Repository Organization
