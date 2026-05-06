@@ -1,905 +1,595 @@
 """
 app.py
 
-Streamlit web interface for Vartis Care AI.
+Vartis Care AI — Streamlit Application
 CSC 7644: Applied LLM Development - Final Project
 Author: Chantel Walker
 
-This module provides a user-friendly web interface for healthcare
-social workers to upload patient intake notes, extract eligibility
-markers via Claude 3.5 Sonnet, retrieve matched community resources
-via ChromaDB RAG, and fall back to external APIs when confidence is low.
+Main Streamlit interface for the Vartis Care AI resource navigator.
+Handles patient info entry, file upload, text input, pipeline
+orchestration, results display, and care note generation.
 """
 
+import os
+import io
+import datetime
 import streamlit as st
-from datetime import date
+from dotenv import load_dotenv
 from extractor import extract_info
 
-# ── PAGE CONFIG ──────────────────────────────────────────────────────────────
+load_dotenv()
+
+# ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Vartis Care AI",
-    page_icon="🌿",
-    layout="wide"
+    page_icon="🏥",
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-# ── GLOBAL STYLES ─────────────────────────────────────────────────────────────
+# ── NEED TYPE META ────────────────────────────────────────────────────────────
+NEED_META = {
+    "MEDICATION":  {"icon": "💊", "label": "Medication Assistance",  "color": "#F5A623"},
+    "MEDICAL":     {"icon": "🏥", "label": "Medical Care",           "color": "#1B5FA8"},
+    "FOOD":        {"icon": "🍎", "label": "Food Assistance",        "color": "#2E8B57"},
+    "UTILITY":     {"icon": "⚡", "label": "Utility Assistance",     "color": "#8B4513"},
+    "RENT":        {"icon": "🏠", "label": "Rent Assistance",        "color": "#6A0DAD"},
+    "HOUSING":     {"icon": "🏘️", "label": "Housing & Shelter",      "color": "#1B5FA8"},
+    "EMPLOYMENT":  {"icon": "💼", "label": "Employment Services",    "color": "#C0392B"},
+    "CLOTHING":    {"icon": "👗", "label": "Clothing Assistance",    "color": "#16A085"},
+}
+
+# ── GLOBAL CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:wght@400;600&family=DM+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Source+Sans+3:wght@300;400;600;700&display=swap');
 
-  #MainMenu, footer, header { visibility: hidden; }
-  .stApp { background-color: #fafaf7; }
+html, body, [class*="css"] { font-family: 'Source Sans 3', sans-serif; }
+.main .block-container { padding: 0 !important; max-width: 100% !important; }
+.stApp { background: #F0F4FA; }
 
-  .vartis-header {
-    background: linear-gradient(135deg, #1a4d2e 0%, #1e5c35 60%, #143d26 100%);
-    padding: 20px 32px 16px;
-    border-bottom: 3px solid #e6a91a;
-    border-radius: 12px;
-    margin-bottom: 16px;
-    position: relative;
-    overflow: hidden;
-  }
-  .vartis-header::before {
-    content: '';
-    position: absolute;
-    top: -40px; right: -40px;
-    width: 200px; height: 200px;
-    border-radius: 50%;
-    background: rgba(230,169,26,0.08);
-  }
-  .header-inner {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .logo-cursive {
-    font-family: 'Great Vibes', cursive;
-    font-size: 52px;
-    color: #f5c842;
-    line-height: 1.0;
-    text-shadow: 0 2px 12px rgba(201,146,10,0.5);
-  }
-  .logo-sub {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 11px;
-    color: rgba(245,200,66,0.85);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    font-weight: 600;
-    margin-top: -6px;
-    margin-left: 4px;
-  }
-  .header-tagline {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    color: rgba(255,255,255,0.55);
-    font-style: italic;
-    margin-top: 6px;
-  }
-  .header-meta { text-align: right; }
-  .badge-name {
-    display: inline-block;
-    background: rgba(201,146,10,0.25);
-    border: 1px solid rgba(230,169,26,0.5);
-    color: #f5c842;
-    font-size: 14px;
-    font-weight: 500;
-    padding: 5px 16px;
-    border-radius: 20px;
-    font-family: 'Cormorant Garamond', serif;
-    letter-spacing: 0.5px;
-  }
-  .badge-course {
-    display: block;
-    color: rgba(255,255,255,0.55);
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-top: 5px;
-  }
+.vartis-hero {
+    background: linear-gradient(135deg, #0D3B7A 0%, #1B5FA8 50%, #2176C7 100%);
+    position: relative; overflow: hidden;
+}
+.vartis-hero::before {
+    content:''; position:absolute; top:-40px; right:-40px;
+    width:320px; height:320px; background:rgba(245,166,35,0.12); border-radius:50%;
+}
+.hero-inner {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:28px 48px; position:relative; z-index:2;
+}
+.hero-left { display:flex; align-items:center; gap:18px; }
+.hero-logo-circle {
+    width:60px; height:60px;
+    background:linear-gradient(135deg,#F5A623,#F0C040);
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:26px; box-shadow:0 4px 16px rgba(245,166,35,0.4); flex-shrink:0;
+}
+.hero-title { font-family:'Playfair Display',serif; font-size:2.1rem; font-weight:700; color:#fff; line-height:1.1; margin:0; }
+.hero-subtitle { font-size:0.78rem; font-weight:600; letter-spacing:0.18em; color:#F5A623; text-transform:uppercase; margin:4px 0 0 0; }
+.hero-tagline { font-style:italic; color:rgba(255,255,255,0.75); font-size:0.85rem; margin:0; }
+.hero-badge { background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); border-radius:24px; padding:8px 20px; color:#fff; font-size:0.82rem; font-weight:600; display:inline-block; margin-bottom:6px; }
+.hero-course { color:rgba(255,255,255,0.55); font-size:0.73rem; letter-spacing:0.08em; text-transform:uppercase; }
+.gold-bar { height:5px; background:linear-gradient(90deg,#F5A623 0%,#F0C040 50%,#F5A623 100%); }
+.stats-bar { background:#0D3B7A; padding:14px 48px; display:flex; gap:48px; align-items:center; }
+.stat-item { text-align:center; }
+.stat-number { font-family:'Playfair Display',serif; font-size:1.5rem; font-weight:700; color:#F5A623; display:block; }
+.stat-label { font-size:0.72rem; color:rgba(255,255,255,0.65); text-transform:uppercase; letter-spacing:0.08em; }
+.stat-divider { width:1px; height:40px; background:rgba(255,255,255,0.15); }
 
-  .intake-panel {
-    background: linear-gradient(135deg, #1a4d2e 0%, #1e5c35 100%);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 20px;
-    border: 1px solid #2d7a4f;
-  }
-  .intake-panel-title {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: #f5c842;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 14px;
-    border-bottom: 1px solid rgba(245,200,66,0.25);
-    padding-bottom: 8px;
-  }
-  .pipeline-steps {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 16px;
-  }
-  .pipeline-step {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(245,200,66,0.2);
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 11px;
-    color: rgba(255,255,255,0.75);
-    flex: 1;
-    min-width: 160px;
-  }
-  .pipeline-step strong {
-    display: block;
-    color: #f5c842;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
+.section-header {
+    background:linear-gradient(90deg,#0D3B7A,#1B5FA8); color:white;
+    padding:14px 32px; font-size:0.8rem; font-weight:700; letter-spacing:0.15em;
+    text-transform:uppercase; display:flex; align-items:center; gap:10px;
+}
+.section-header-gold {
+    background:linear-gradient(90deg,#C47D00,#F5A623); color:white;
+    padding:14px 32px; font-size:0.8rem; font-weight:700; letter-spacing:0.15em;
+    text-transform:uppercase; display:flex; align-items:center; gap:10px;
+}
+.profile-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; padding:24px 32px; background:#F5F8FF; }
+.profile-card { background:white; border-radius:12px; padding:16px 18px; border-left:4px solid #1B5FA8; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+.profile-card-label { font-size:0.7rem; font-weight:700; color:#8A9AB0; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px; }
+.profile-card-value { font-size:1.05rem; font-weight:700; color:#0D3B7A; }
+.need-badge { display:inline-flex; align-items:center; gap:5px; background:linear-gradient(135deg,#1B5FA8,#2176C7); color:white; border-radius:20px; padding:5px 14px; font-size:0.75rem; font-weight:700; margin:3px; letter-spacing:0.04em; }
+.resource-section-title { display:flex; align-items:center; gap:10px; padding:16px 32px 8px; font-family:'Playfair Display',serif; font-size:1.1rem; font-weight:700; border-bottom:2px solid #E8EFF8; }
+.no-results { text-align:center; padding:48px; color:#8A9AB0; font-size:1rem; }
+.vartis-footer { background:#0D3B7A; padding:20px 48px; display:flex; justify-content:space-between; align-items:center; margin-top:40px; }
+.footer-left { font-family:'Playfair Display',serif; color:white; font-size:1rem; }
+.footer-right { color:rgba(255,255,255,0.5); font-size:0.75rem; }
 
-  .patient-panel {
-    background: linear-gradient(135deg, #1a4d2e 0%, #1e5c35 100%);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 20px;
-    border: 1px solid #2d7a4f;
-  }
-  .patient-panel-title {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: #f5c842;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 14px;
-    border-bottom: 1px solid rgba(245,200,66,0.25);
-    padding-bottom: 8px;
-  }
-  .profile-summary {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(245,200,66,0.2);
-    border-radius: 8px;
-    padding: 10px 16px;
-    margin-top: 14px;
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    font-size: 13px;
-    color: rgba(255,255,255,0.85);
-  }
-  .prof-key {
-    font-weight: 700;
-    color: #f5c842;
-    margin-right: 5px;
-  }
-  .prof-sep { color: rgba(245,200,66,0.3); }
-
-  .extracted-profile {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(245,200,66,0.3);
-    border-radius: 10px;
-    padding: 14px 18px;
-    margin-top: 14px;
-    font-size: 13px;
-    color: rgba(255,255,255,0.85);
-  }
-  .extracted-profile-title {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #f5c842;
-    margin-bottom: 10px;
-  }
-  .extracted-row {
-    display: flex;
-    gap: 24px;
-    flex-wrap: wrap;
-    margin-bottom: 6px;
-  }
-  .extracted-item { white-space: nowrap; }
-  .extracted-key {
-    font-weight: 700;
-    color: #f5c842;
-    margin-right: 5px;
-  }
-
-  .search-panel {
-    background: white;
-    border: 1px solid #e0ede5;
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 12px rgba(26,77,46,0.06);
-  }
-  .search-panel-title {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: #1a4d2e;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 14px;
-  }
-
-  .notes-panel {
-    background: white;
-    border: 1.5px solid #e0ede5;
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-top: 20px;
-    box-shadow: 0 2px 12px rgba(26,77,46,0.06);
-  }
-  .notes-panel-title {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: #1a4d2e;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 14px;
-    border-bottom: 1px solid #e0ede5;
-    padding-bottom: 8px;
-  }
-
-  .resource-card {
-    background: white;
-    border-radius: 12px;
-    border: 1.5px solid #e0ede5;
-    padding: 16px 18px;
-    margin-bottom: 14px;
-    position: relative;
-    overflow: hidden;
-  }
-  .card-accent {
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-  }
-  .card-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 8px;
-  }
-  .need-badge {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 3px 10px;
-    border-radius: 20px;
-  }
-  .match-pct {
-    font-size: 12px;
-    font-weight: 700;
-    color: #2d7a4f;
-    background: #e8f5ee;
-    border-radius: 8px;
-    padding: 2px 10px;
-  }
-  .card-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #1a2e1f;
-    margin-bottom: 5px;
-  }
-  .card-address {
-    font-size: 12px;
-    color: #7a9882;
-    margin-bottom: 8px;
-  }
-  .card-link {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 600;
-    color: #2d7a4f;
-    text-decoration: none;
-    padding: 4px 12px;
-    border: 1px solid #c0dcc8;
-    border-radius: 6px;
-    margin-right: 8px;
-  }
-  .card-phone { font-size: 11px; color: #7a9882; font-weight: 500; }
-  .source-label { font-size: 10px; color: #7a9882; margin-top: 8px; }
-  .source-dot {
-    display: inline-block;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: #e6a91a;
-    margin-right: 5px;
-    vertical-align: middle;
-  }
-
-  .results-count {
-    font-size: 13px;
-    color: #7a9882;
-    font-weight: 500;
-    margin-bottom: 14px;
-  }
-  .results-count strong { color: #1a4d2e; font-weight: 700; }
-
-  .no-results {
-    text-align: center;
-    padding: 40px 20px;
-    color: #7a9882;
-    font-size: 14px;
-    background: white;
-    border-radius: 12px;
-    border: 1.5px dashed #c8e0d0;
-  }
-
-  .stSelectbox label, .stTextInput label, .stDateInput label {
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    color: #7a9882 !important;
-    letter-spacing: 1px !important;
-    text-transform: uppercase !important;
-  }
-
-  .upload-success {
-    background: #e8f5ee;
-    border: 1.5px solid #2d7a4f;
-    border-radius: 8px;
-    padding: 14px 18px;
-    color: #1a4d2e;
-    font-size: 14px;
-    font-weight: 500;
-    margin-top: 12px;
-  }
-
-  .fallback-notice {
-    background: #fef9e7;
-    border: 1px solid #c9920a;
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 12px;
-    color: #8a6200;
-    margin-bottom: 14px;
-  }
+.stTextArea textarea { border:2px solid #E2E8F0 !important; border-radius:10px !important; font-family:'Source Sans 3',sans-serif !important; font-size:0.88rem !important; padding:14px !important; background:#FAFCFF !important; }
+.stTextArea textarea:focus { border-color:#1B5FA8 !important; }
+.stButton > button { background:linear-gradient(135deg,#1B5FA8 0%,#0D3B7A 100%) !important; color:white !important; border:none !important; border-radius:8px !important; font-weight:700 !important; font-size:1rem !important; padding:14px 0 !important; width:100% !important; box-shadow:0 4px 15px rgba(13,59,122,0.3) !important; }
+.stButton > button:hover { background:linear-gradient(135deg,#2176C7 0%,#1B5FA8 100%) !important; transform:translateY(-1px) !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── NEED TYPE CONFIG ──────────────────────────────────────────────────────────
-NEED_TYPES = {
-    "MEDICATION": {
-        "icon": "💊", "label": "Medication Assistance",
-        "bg": "#eeebff", "text": "#5a4fb0",
-        "bar": "linear-gradient(90deg,#6b5bb8,#9b8de0)"
-    },
-    "MEDICAL": {
-        "icon": "🏥", "label": "Medical Care",
-        "bg": "#e8f5ee", "text": "#1a4d2e",
-        "bar": "linear-gradient(90deg,#2d7a4f,#4caf78)"
-    },
-    "FOOD": {
-        "icon": "🍎", "label": "Food Assistance",
-        "bg": "#fef0e6", "text": "#c05c1a",
-        "bar": "linear-gradient(90deg,#e07b39,#f5a55e)"
-    },
-    "UTILITY": {
-        "icon": "⚡", "label": "Utility Assistance",
-        "bg": "#e6f1fb", "text": "#185fa5",
-        "bar": "linear-gradient(90deg,#2a7ab8,#5baade)"
-    },
-    "RENT": {
-        "icon": "🏠", "label": "Rent Assistance",
-        "bg": "#fef9e7", "text": "#8a6200",
-        "bar": "linear-gradient(90deg,#c9920a,#f5c842)"
-    },
-    "HOUSING": {
-        "icon": "🏘️", "label": "Housing & Shelter",
-        "bg": "#fdeaea", "text": "#9b2828",
-        "bar": "linear-gradient(90deg,#c94040,#e07070)"
-    },
-    "EMPLOYMENT": {
-        "icon": "💼", "label": "Employment Services",
-        "bg": "#e1f5f2", "text": "#155a52",
-        "bar": "linear-gradient(90deg,#1a7a6e,#3ab8a8)"
-    },
-    "CLOTHING": {
-        "icon": "👗", "label": "Clothing Assistance",
-        "bg": "#fce8f3", "text": "#9b3070",
-        "bar": "linear-gradient(90deg,#c45090,#e085b8)"
-    },
+
+# ── HERO ─────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="vartis-hero">
+  <div class="hero-inner">
+    <div class="hero-left">
+      <div class="hero-logo-circle">🏥</div>
+      <div>
+        <p class="hero-title">Vartis Care AI</p>
+        <p class="hero-subtitle">Resource Navigator — Patient Advocacy Platform</p>
+        <p class="hero-tagline">Connecting patients to verified community resources</p>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div class="hero-badge">👤 Chantel Walker</div>
+      <p class="hero-course">CSC 7644 · Applied LLM Development · LSU</p>
+    </div>
+  </div>
+</div>
+<div class="gold-bar"></div>
+<div class="stats-bar">
+  <div class="stat-item"><span class="stat-number">29+</span><span class="stat-label">Verified Resources</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-item"><span class="stat-number">8</span><span class="stat-label">Need Categories</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-item"><span class="stat-number">3</span><span class="stat-label">Pipeline Stages</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-item"><span class="stat-number">95%</span><span class="stat-label">Faithfulness Target</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-item"><span class="stat-number">RAG</span><span class="stat-label">+ Agentic Fallback</span></div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ── SESSION STATE ─────────────────────────────────────────────────────────────
+if "result" not in st.session_state:
+    st.session_state.result = None
+if "patient_info" not in st.session_state:
+    st.session_state.patient_info = {}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 1 — PATIENT INFORMATION FORM
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown("""
+<div class="section-header" style="margin-top:20px;">
+  <span>👤</span> PATIENT INFORMATION
+</div>
+""", unsafe_allow_html=True)
+
+with st.container():
+    st.markdown("<div style='background:white;padding:24px 32px 28px;'>", unsafe_allow_html=True)
+    pi_col1, pi_col2, pi_col3 = st.columns(3)
+
+    with pi_col1:
+        case_id        = st.text_input("Case ID",               placeholder="e.g. VC-2025-0042")
+        patient_name   = st.text_input("Patient Full Name",     placeholder="e.g. Jane Doe")
+        dob            = st.text_input("Date of Birth",         placeholder="MM/DD/YYYY")
+
+    with pi_col2:
+        zip_code       = st.text_input("ZIP Code",              placeholder="e.g. 30318")
+        insurance_name = st.text_input("Insurance Name",        placeholder="e.g. Medicaid, Aetna, None")
+        insurance_id   = st.text_input("Insurance ID / Member #", placeholder="Optional")
+
+    with pi_col3:
+        navigator_name = st.text_input("Navigator / Social Worker", placeholder="Your name")
+        facility       = st.text_input("Facility / Clinic",         placeholder="e.g. Grady Memorial Hospital")
+        visit_date     = st.text_input("Visit Date",                placeholder="MM/DD/YYYY")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.session_state.patient_info = {
+    "case_id": case_id, "patient_name": patient_name, "dob": dob,
+    "zip_code": zip_code, "insurance_name": insurance_name, "insurance_id": insurance_id,
+    "navigator": navigator_name, "facility": facility, "visit_date": visit_date,
 }
 
-# ── SESSION STATE INIT ────────────────────────────────────────────────────────
-if "extracted_profile" not in st.session_state:
-    st.session_state.extracted_profile = None
-if "intake_note_text" not in st.session_state:
-    st.session_state.intake_note_text = ""
-if "pipeline_ran" not in st.session_state:
-    st.session_state.pipeline_ran = False
-if "fallback_triggered" not in st.session_state:
-    st.session_state.fallback_triggered = False
 
-# ── HEADER ────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 2 — INTAKE NOTE INPUT
+# ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
-<div class="vartis-header">
-  <div class="header-inner">
-    <div>
-      <div class="logo-cursive">Vartis</div>
-      <div class="logo-sub">Care AI &mdash; Resource Navigator</div>
-      <div class="header-tagline">Connecting patients to verified community resources</div>
-    </div>
-    <div class="header-meta">
-      <span class="badge-name">Chantel Walker</span>
-      <span class="badge-course">CSC 7644 &bull; Applied LLM Development</span>
-    </div>
-  </div>
+<div class="section-header" style="margin-top:4px;">
+  <span>📋</span> UPLOAD PATIENT INTAKE NOTE
 </div>
 """, unsafe_allow_html=True)
 
-# ── INTAKE NOTE UPLOAD PANEL ──────────────────────────────────────────────────
-st.markdown(
-    '<div class="intake-panel">'
-    '<div class="intake-panel-title">📄 Step 1 — Upload Patient Intake Note</div>',
-    unsafe_allow_html=True
-)
+with st.container():
+    st.markdown("<div style='background:white;padding:24px 32px 8px;'>", unsafe_allow_html=True)
+    col_upload, col_paste = st.columns([1, 1], gap="large")
 
-st.markdown("""
-<div class="pipeline-steps">
-  <div class="pipeline-step">
-    <strong>Stage 1 — LLM Extraction</strong>
-    Claude 3.5 Sonnet reads the intake note and extracts income, ZIP, diagnoses, insurance status, and patient needs.
-  </div>
-  <div class="pipeline-step">
-    <strong>Stage 2 — RAG Retrieval</strong>
-    The eligibility profile is matched against community resources in ChromaDB using semantic similarity search.
-  </div>
-  <div class="pipeline-step">
-    <strong>Stage 3 — Agentic Fallback</strong>
-    If confidence is low, the system queries FindHelp.org and the 211 National Data Platform automatically.
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    with col_upload:
+        st.markdown(
+            "<p style='font-weight:700;color:#0D3B7A;font-size:0.85rem;"
+            "text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;'>"
+            "📤 Upload .txt or .pdf Intake Note</p>",
+            unsafe_allow_html=True
+        )
+        uploaded_file = st.file_uploader(
+            label="", type=["txt", "pdf"],
+            help="Upload a plain text or PDF intake note",
+            label_visibility="collapsed"
+        )
 
-intake_col1, intake_col2 = st.columns([1, 1], gap="large")
+    with col_paste:
+        st.markdown(
+            "<p style='font-weight:700;color:#0D3B7A;font-size:0.85rem;"
+            "text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;'>"
+            "✏️ Or Paste Intake Note Directly</p>",
+            unsafe_allow_html=True
+        )
+        pasted_text = st.text_area(
+            label="", height=160,
+            placeholder=(
+                "Example: Patient is a 42-year-old uninsured female. "
+                "Monthly income ~$1,100. ZIP 30318. Cannot afford medications. "
+                "Two months behind on rent. Requesting food assistance..."
+            ),
+            label_visibility="collapsed"
+        )
 
-with intake_col1:
-    st.markdown(
-        "<p style='font-size:11px;font-weight:600;color:rgba(245,200,66,0.85);"
-        "letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;'>"
-        "Upload .txt or .pdf intake note</p>",
-        unsafe_allow_html=True
-    )
-    uploaded_file = st.file_uploader(
-        label="Upload intake note",
-        type=["txt", "pdf"],
-        label_visibility="collapsed"
-    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    if uploaded_file is not None:
-        if uploaded_file.type == "application/pdf":
-            # Read PDF text using PyPDF2 if available, else show message
-            try:
-                import PyPDF2
-                reader = PyPDF2.PdfReader(uploaded_file)
-                file_text = ""
-                for page in reader.pages:
-                    file_text += page.extract_text() or ""
-            except ImportError:
-                file_text = ""
-                st.warning(
-                    "PDF support requires PyPDF2. "
-                    "Run: pip install PyPDF2, or upload a .txt file instead."
-                )
-        else:
-            file_text = uploaded_file.read().decode("utf-8", errors="ignore")
-
-        if file_text.strip():
-            st.session_state.intake_note_text = file_text
-            st.markdown(
-                f"<div style='background:rgba(255,255,255,0.07);border:1px solid "
-                f"rgba(245,200,66,0.25);border-radius:8px;padding:8px 14px;"
-                f"margin-top:8px;font-size:11px;color:rgba(255,255,255,0.6);'>"
-                f"✅ Loaded: <strong style='color:#f5c842;'>{uploaded_file.name}"
-                f"</strong> ({len(file_text)} characters)</div>",
-                unsafe_allow_html=True
-            )
-
-with intake_col2:
-    st.markdown(
-        "<p style='font-size:11px;font-weight:600;color:rgba(245,200,66,0.85);"
-        "letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;'>"
-        "Or paste intake note directly</p>",
-        unsafe_allow_html=True
-    )
-    pasted_note = st.text_area(
-        label="Paste intake note",
-        height=140,
-        placeholder=(
-            "Paste unstructured intake note here...\n\n"
-            "Example: Patient is a 42-year-old uninsured female with Type 2 "
-            "diabetes and hypertension. Monthly income ~$1,100. ZIP 30318. "
-            "Cannot afford medications. Two months behind on rent..."
-        ),
-        label_visibility="collapsed"
-    )
-    if pasted_note.strip():
-        st.session_state.intake_note_text = pasted_note
-
-# Run pipeline button
-st.markdown("<div style='margin-top:14px;'>", unsafe_allow_html=True)
-run_pipeline_btn = st.button(
-    "🔍 Run Pipeline — Extract & Match Resources",
-    use_container_width=True,
-    type="primary"
-)
+st.markdown("<div style='padding:16px 32px 24px;background:#F0F4FA;'>", unsafe_allow_html=True)
+run_clicked = st.button("🔵  Run Pipeline — Extract & Match Resources")
 st.markdown("</div>", unsafe_allow_html=True)
 
-if run_pipeline_btn:
-    note = st.session_state.intake_note_text.strip()
-    if not note:
-        st.warning("Please upload or paste a patient intake note before running.")
-    else:
-        with st.spinner(
-            "Stage 1: Claude 3.5 Sonnet extracting eligibility profile… "
-            "Stage 2: ChromaDB semantic search… "
-            "Stage 3: Checking fallback threshold…"
-        ):
-            result = extract_info(note)
-            st.session_state.extracted_profile = result.get("profile", {})
-            st.session_state.pipeline_ran = True
-            st.session_state.fallback_triggered = result.get(
-                "fallback_triggered", False
-            )
-            # Store matched resources in session for use below
-            st.session_state.pipeline_resources = result.get(
-                "matched_resources", []
-            )
 
-# Show extracted profile if pipeline has run
-if st.session_state.pipeline_ran and st.session_state.extracted_profile:
-    p = st.session_state.extracted_profile
-    diagnoses = ", ".join(p.get("diagnoses") or []) or "—"
-    needs = ", ".join(p.get("needs") or []) or "—"
-    st.markdown(f"""
-    <div class="extracted-profile">
-      <div class="extracted-profile-title">✅ Extracted Eligibility Profile</div>
-      <div class="extracted-row">
-        <span class="extracted-item">
-          <span class="extracted-key">Income:</span>
-          ${p.get("income_monthly_usd") or "—"}/mo
-        </span>
-        <span class="extracted-item">
-          <span class="extracted-key">ZIP:</span>
-          {p.get("zip_code") or "—"}
-        </span>
-        <span class="extracted-item">
-          <span class="extracted-key">Insurance:</span>
-          {(p.get("insurance_status") or "unknown").title()}
-        </span>
-        <span class="extracted-item">
-          <span class="extracted-key">Age:</span>
-          {p.get("age") or "—"}
-        </span>
-        <span class="extracted-item">
-          <span class="extracted-key">Household:</span>
-          {p.get("household_size") or "—"}
-        </span>
-      </div>
-      <div class="extracted-row">
-        <span class="extracted-item">
-          <span class="extracted-key">Diagnoses:</span>{diagnoses}
-        </span>
-      </div>
-      <div class="extracted-row">
-        <span class="extracted-item">
-          <span class="extracted-key">Identified Needs:</span>{needs}
-        </span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ── PATIENT PROFILE INPUT PANEL ───────────────────────────────────────────────
-st.markdown(
-    '<div class="patient-panel">'
-    '<div class="patient-panel-title">👤 Step 2 — Patient Profile</div>',
-    unsafe_allow_html=True
-)
-
-row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
-
-with row1_col1:
-    patient_name = st.text_input(
-        "Patient Name (De-identified)",
-        placeholder="e.g. Maria G."
-    )
-with row1_col2:
-    patient_dob = st.date_input(
-        "Date of Birth",
-        value=None,
-        min_value=date(1920, 1, 1),
-        max_value=date.today()
-    )
-with row1_col3:
-    zip_code = st.text_input("ZIP Code", placeholder="e.g. 30301")
-with row1_col4:
-    insurance_status = st.selectbox(
-        "Insurance Status",
-        [
-            "-- Select --", "Uninsured", "Medicaid", "Medicare",
-            "Medicaid & Medicare (Dual)", "Marketplace / ACA Plan",
-            "Employer-Sponsored", "CHIP", "VA / TRICARE", "Underinsured"
-        ]
-    )
-
-row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
-
-with row2_col1:
-    income_level = st.selectbox(
-        "Income Level",
-        [
-            "-- Select --", "Below 100% FPL", "Below 133% FPL",
-            "Below 138% FPL", "Below 150% FPL", "Below 200% FPL",
-            "Below 250% FPL", "Below 300% FPL", "Above 300% FPL"
-        ]
-    )
-with row2_col2:
-    household_size = st.selectbox(
-        "Household Size",
-        ["-- Select --", "1", "2", "3", "4", "5", "6", "7", "8+"]
-    )
-with row2_col3:
-    urgency = st.selectbox(
-        "Urgency Level",
-        ["-- Select --", "🔴 High", "🟡 Medium", "🟢 Low"]
-    )
-with row2_col4:
-    case_number = st.text_input(
-        "Case Reference Number",
-        placeholder="e.g. ATL-2026-0042"
-    )
-
-profile_complete = (
-    patient_name.strip() != "" and
-    patient_dob is not None and
-    zip_code.strip() != "" and
-    insurance_status != "-- Select --" and
-    income_level != "-- Select --"
-)
-
-if profile_complete:
-    dob_str = patient_dob.strftime("%m/%d/%Y") if patient_dob else "N/A"
-    st.markdown(f"""
-    <div class="profile-summary">
-      <span><span class="prof-key">Patient:</span>{patient_name}</span>
-      <span class="prof-sep">|</span>
-      <span><span class="prof-key">DOB:</span>{dob_str}</span>
-      <span class="prof-sep">|</span>
-      <span><span class="prof-key">ZIP:</span>{zip_code.strip()}</span>
-      <span class="prof-sep">|</span>
-      <span><span class="prof-key">Income:</span>{income_level}</span>
-      <span class="prof-sep">|</span>
-      <span><span class="prof-key">Insurance:</span>{insurance_status}</span>
-      <span class="prof-sep">|</span>
-      <span><span class="prof-key">Urgency:</span>{urgency}</span>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <div style="background:rgba(255,255,255,0.06);border:1px dashed rgba(245,200,66,0.25);
-    border-radius:8px;padding:10px 16px;margin-top:14px;font-size:12px;
-    color:rgba(255,255,255,0.4);font-style:italic;">
-      Complete patient profile fields above to generate a summary.
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ── SEARCH / FILTER PANEL ─────────────────────────────────────────────────────
-st.markdown(
-    '<div class="search-panel">'
-    '<div class="search-panel-title">🔍 Step 3 — Filter Resources</div>',
-    unsafe_allow_html=True
-)
-
-sc1, sc2, sc3, sc4 = st.columns(4)
-
-with sc1:
-    need_filter = st.selectbox(
-        "Need Type",
-        ["All Categories", "MEDICATION", "MEDICAL", "FOOD",
-         "UTILITY", "RENT", "HOUSING", "EMPLOYMENT", "CLOTHING"]
-    )
-with sc2:
-    source_filter = st.selectbox(
-        "Source",
-        ["All Sources", "internal_corpus", "findhelp_api", "211_national"]
-    )
-with sc3:
-    conf_options = {
-        "Any Match": 0.0,
-        "90%+": 0.90,
-        "92%+": 0.92,
-        "94%+": 0.94,
-        "96%+": 0.96
-    }
-    conf_label = st.selectbox("Min. Match %", list(conf_options.keys()))
-    min_conf = conf_options[conf_label]
-with sc4:
-    phone_filter = st.selectbox(
-        "Has Phone",
-        ["Any", "Has Phone", "No Phone Listed"]
-    )
-
-keyword = st.text_input(
-    "Keyword Search",
-    placeholder="e.g. shelter, prescription, food bank, job training..."
-)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ── LOAD + FILTER RESOURCES ───────────────────────────────────────────────────
-# Use pipeline results if available, otherwise load default corpus
-if st.session_state.pipeline_ran and "pipeline_resources" in st.session_state:
-    resources = list(st.session_state.pipeline_resources)
-else:
-    data = extract_info("")
-    resources = data.get("matched_resources", [])
-
-if need_filter != "All Categories":
-    resources = [r for r in resources if r["need_type"] == need_filter]
-if source_filter != "All Sources":
-    resources = [r for r in resources if r["source"] == source_filter]
-resources = [r for r in resources if r["confidence"] >= min_conf]
-if phone_filter == "Has Phone":
-    resources = [r for r in resources if r.get("phone")]
-elif phone_filter == "No Phone Listed":
-    resources = [r for r in resources if not r.get("phone")]
-if keyword.strip():
-    kw = keyword.strip().lower()
-    resources = [
-        r for r in resources
-        if kw in r["name"].lower() or kw in r.get("address", "").lower()
-    ]
-resources = sorted(resources, key=lambda r: r["confidence"], reverse=True)
-
-# ── RESULTS ───────────────────────────────────────────────────────────────────
-if st.session_state.fallback_triggered:
-    st.markdown(
-        '<div class="fallback-notice">⚡ <strong>Agentic fallback triggered</strong> '
-        '— internal RAG confidence was below threshold. Results supplemented '
-        'with FindHelp.org and 211 National Data Platform.</div>',
-        unsafe_allow_html=True
-    )
-
-count = len(resources)
-st.markdown(
-    f'<div class="results-count"><strong>{count}</strong> '
-    f'resource{"s" if count != 1 else ""} matched</div>',
-    unsafe_allow_html=True
-)
-
-if not resources:
-    st.markdown("""
-    <div class="no-results">
-      No resources matched your criteria.<br>
-      <span style="font-size:12px;">
-        Upload an intake note and run the pipeline, or adjust the filters above.
-      </span>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    left_col, right_col = st.columns(2)
-
-    for i, resource in enumerate(resources):
-        need_type = resource.get("need_type", "GENERAL")
-        info = NEED_TYPES.get(need_type, {
-            "icon": "📋", "label": need_type,
-            "bg": "#f5f5f5", "text": "#444",
-            "bar": "linear-gradient(90deg,#888,#aaa)"
-        })
-
-        confidence_pct = int(resource["confidence"] * 100)
-        phone_html = (
-            f'<span class="card-phone">📞 {resource["phone"]}</span>'
-            if resource.get("phone") else ""
-        )
-        source_map = {
-            "findhelp_api": "FindHelp API",
-            "211_national": "211 National",
-            "internal_corpus": "Internal Corpus"
-        }
-        source_label = source_map.get(resource["source"], "Internal Corpus")
-
-        card_html = f"""
-        <div class="resource-card">
-          <div class="card-accent" style="background:{info['bar']};"></div>
-          <div class="card-top">
-            <span class="need-badge"
-              style="background:{info['bg']};color:{info['text']};">
-              {info['icon']} {need_type}
-            </span>
-            <span class="match-pct">{confidence_pct}% Match</span>
-          </div>
-          <div class="card-name">{resource['name']}</div>
-          <div class="card-address">📍 {resource['address']}</div>
-          <div>
-            <a class="card-link" href="{resource['website']}"
-              target="_blank">Visit Website</a>
-            {phone_html}
-          </div>
-          <div class="source-label">
-            <span class="source-dot"></span>{source_label}
-          </div>
-        </div>
-        """
-
-        if i % 2 == 0:
-            with left_col:
-                st.markdown(card_html, unsafe_allow_html=True)
+# ── PIPELINE EXECUTION ────────────────────────────────────────────────────────
+if run_clicked:
+    intake_text = ""
+    if uploaded_file is not None:
+        if uploaded_file.name.endswith(".pdf"):
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(io.BytesIO(uploaded_file.read()))
+                intake_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            except Exception:
+                st.error("Could not read PDF. Please paste the note directly instead.")
         else:
-            with right_col:
-                st.markdown(card_html, unsafe_allow_html=True)
+            intake_text = uploaded_file.read().decode("utf-8", errors="ignore")
+    elif pasted_text.strip():
+        intake_text = pasted_text.strip()
 
-# ── ADVOCATE NOTES AND CHART UPLOAD ──────────────────────────────────────────
-st.markdown(
-    '<div class="notes-panel">'
-    '<div class="notes-panel-title">📋 Step 4 — Advocate Notes & Patient Chart Upload</div>',
-    unsafe_allow_html=True
-)
+    if not intake_text:
+        st.warning("⚠️  Please upload a file or paste an intake note before running the pipeline.")
+    else:
+        with st.spinner("🔍  Running three-stage pipeline..."):
+            try:
+                result = extract_info(intake_text)
+                st.session_state.result = result
+            except Exception as e:
+                st.error(f"Pipeline error: {e}")
+                st.session_state.result = None
 
-st.caption(
-    "Document approved referrals and upload to patient chart. "
-    "All referrals must be reviewed and approved before patient delivery."
-)
 
-notes_col1, notes_col2 = st.columns([2, 1])
+# ══════════════════════════════════════════════════════════════════════════════
+# RESULTS
+# ══════════════════════════════════════════════════════════════════════════════
+if st.session_state.result:
+    result    = st.session_state.result
+    profile   = result.get("profile", {})
+    resources = result.get("matched_resources", [])
+    mean_conf = result.get("mean_confidence", 0.0)
+    fallback  = result.get("fallback_triggered", False)
 
-with notes_col1:
-    advocate_notes = st.text_area(
-        "Advocate Notes",
-        height=150,
-        placeholder=(
-            "Document which resources were approved and referred to the "
-            "patient. Include any follow-up actions, patient preferences, "
-            "or barriers identified during intake..."
-        ),
-        label_visibility="visible"
-    )
+    # ── EXTRACTED PROFILE ─────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="section-header" style="margin-top:24px;">
+      <span>🧠</span> EXTRACTED PATIENT PROFILE
+    </div>
+    """, unsafe_allow_html=True)
 
-with notes_col2:
-    st.markdown("**Referral Status**")
-    approved_referral = st.checkbox("Resources reviewed by advocate")
-    patient_notified = st.checkbox("Patient notified of referrals")
-    chart_ready = st.checkbox("Ready to upload to patient chart")
+    ins = (profile.get("insurance_status") or "unknown").title()
+    ins_color = {"Uninsured": "#C0392B", "Medicaid": "#2E8B57",
+                 "Medicare": "#1B5FA8", "Private": "#8B4513"}.get(ins, "#64748B")
 
-    st.markdown("")
+    profile_items = [
+        ("Age",            str(profile.get("age") or "—")),
+        ("Gender",         (profile.get("gender") or "—").title()),
+        ("Monthly Income", f"${profile['income_monthly_usd']:,.0f}"
+                           if profile.get("income_monthly_usd") else "—"),
+        ("ZIP Code",       profile.get("zip_code")
+                           or st.session_state.patient_info.get("zip_code") or "—"),
+        ("Household Size", str(profile.get("household_size") or "—")),
+        ("Insurance",      ins),
+    ]
 
-    if st.button(
-        "📤 Upload to Patient Chart",
-        type="primary",
-        use_container_width=True,
-        disabled=not (approved_referral and patient_notified and chart_ready)
-    ):
-        if profile_complete and advocate_notes.strip():
+    cards_html = '<div class="profile-grid">'
+    for label, value in profile_items:
+        bc = ins_color if label == "Insurance" else "#1B5FA8"
+        vc = "#C0392B" if (label == "Insurance" and ins == "Uninsured") else "#0D3B7A"
+        cards_html += (
+            f'<div class="profile-card" style="border-left-color:{bc};">'
+            f'<div class="profile-card-label">{label}</div>'
+            f'<div class="profile-card-value" style="color:{vc};">{value}</div>'
+            f'</div>'
+        )
+    cards_html += "</div>"
+    st.markdown(cards_html, unsafe_allow_html=True)
+
+    needs = profile.get("needs") or []
+    if needs:
+        badges = "".join(
+            f'<span class="need-badge">'
+            f'{NEED_META.get(n.upper(), {}).get("icon","•")} '
+            f'{NEED_META.get(n.upper(), {}).get("label", n)}'
+            f'</span>'
+            for n in needs
+        )
+        st.markdown(
+            f'<div style="padding:12px 32px 20px;background:#F5F8FF;">'
+            f'<p style="font-size:0.72rem;font-weight:700;color:#8A9AB0;'
+            f'text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">Identified Needs</p>'
+            f'{badges}</div>',
+            unsafe_allow_html=True
+        )
+
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric("Resources Matched", len(resources))
+    with col_m2:
+        st.metric("Mean Confidence", f"{mean_conf:.0%}")
+    with col_m3:
+        st.metric("Agentic Fallback", "✅ Triggered" if fallback else "⬜ Not needed")
+
+    # ── MATCHED RESOURCES ─────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="section-header" style="margin-top:20px;">
+      <span>🔍</span> MATCHED COMMUNITY RESOURCES
+    </div>
+    """, unsafe_allow_html=True)
+
+    f_col1, f_col2, f_col3, f_col4 = st.columns([2, 2, 2, 2])
+    with f_col1:
+        all_types = sorted(set(r["need_type"] for r in resources))
+        type_opts = ["All Need Types"] + [
+            f'{NEED_META.get(t,{}).get("icon","•")} {NEED_META.get(t,{}).get("label",t)}'
+            for t in all_types
+        ]
+        sel_type_label = st.selectbox("Filter by Need Type", type_opts)
+        sel_type = None
+        if sel_type_label != "All Need Types":
+            icon_part = sel_type_label.split(" ")[0]
+            sel_type = next(
+                (t for t in all_types if NEED_META.get(t, {}).get("icon", "") == icon_part), None
+            )
+    with f_col2:
+        sel_source = st.selectbox("Filter by Source", ["All Sources", "Internal Corpus", "FindHelp / 211"])
+    with f_col3:
+        conf_min = st.slider("Min Confidence", 0.0, 1.0, 0.0, 0.05, format="%.0f%%")
+    with f_col4:
+        keyword = st.text_input("Search by keyword", placeholder="e.g. food, shelter...")
+
+    filtered = resources
+    if sel_type:
+        filtered = [r for r in filtered if r["need_type"] == sel_type]
+    if sel_source == "Internal Corpus":
+        filtered = [r for r in filtered if r.get("source") == "internal_corpus"]
+    elif sel_source == "FindHelp / 211":
+        filtered = [r for r in filtered if r.get("source") == "findhelp_api"]
+    filtered = [r for r in filtered if r.get("confidence", 0) >= conf_min]
+    if keyword.strip():
+        kw = keyword.strip().lower()
+        filtered = [r for r in filtered
+                    if kw in r.get("name","").lower()
+                    or kw in r.get("address","").lower()
+                    or kw in r.get("need_type","").lower()]
+
+    if not filtered:
+        st.markdown(
+            '<div class="no-results">🔍 No resources match your filters. Try broadening your search.</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        grouped: dict[str, list] = {}
+        for r in filtered:
+            grouped.setdefault(r["need_type"], []).append(r)
+
+        for need_type, group in grouped.items():
+            meta = NEED_META.get(need_type, {"icon": "•", "label": need_type, "color": "#1B5FA8"})
             st.markdown(
-                f"""
-                <div class="upload-success">
-                  ✅ <strong>Successfully uploaded to patient chart</strong><br>
-                  <span style="font-size:12px;">
-                  Patient: {patient_name} &nbsp;|&nbsp;
-                  Case: {case_number if case_number else "N/A"} &nbsp;|&nbsp;
-                  Date: {date.today().strftime("%m/%d/%Y")}
-                  </span>
-                </div>
-                """,
+                f'<div class="resource-section-title" style="color:{meta["color"]};">'
+                f'{meta["icon"]} {meta["label"]}'
+                f'<span style="font-size:0.75rem;font-weight:400;color:#8A9AB0;margin-left:8px;">'
+                f'({len(group)} resource{"s" if len(group)!=1 else ""})</span>'
+                f'</div>',
                 unsafe_allow_html=True
             )
+
+            # Use Streamlit columns + st.link_button to avoid HTML rendering issues
+            cols = st.columns(3)
+            for i, r in enumerate(group):
+                with cols[i % 3]:
+                    conf_pct = f'{r.get("confidence", 0):.0%}'
+                    source_text = "FindHelp / 211" if r.get("source") == "findhelp_api" else "Internal Corpus"
+                    phone_line = f'<div style="font-size:0.78rem;color:#64748B;margin-bottom:6px;">📞 {r["phone"]}</div>' if r.get("phone") else ""
+
+                    st.markdown(
+                        f'<div style="background:white;border-radius:14px;padding:18px 18px 12px;'
+                        f'border-top:4px solid {meta["color"]};'
+                        f'box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:4px;">'
+                        f'<div style="display:flex;justify-content:space-between;'
+                        f'align-items:flex-start;margin-bottom:10px;">'
+                        f'<span style="font-weight:700;color:#0D3B7A;font-size:0.92rem;'
+                        f'line-height:1.3;flex:1;margin-right:8px;">{r["name"]}</span>'
+                        f'<span style="background:linear-gradient(135deg,#1B5FA8,#2176C7);'
+                        f'color:white;border-radius:20px;padding:3px 10px;'
+                        f'font-size:0.7rem;font-weight:700;white-space:nowrap;">✓ {conf_pct}</span>'
+                        f'</div>'
+                        f'<div style="font-size:0.78rem;color:#64748B;margin-bottom:6px;">'
+                        f'📍 {r.get("address","N/A")}</div>'
+                        f'{phone_line}'
+                        f'<div style="font-size:0.63rem;color:#A0AEC0;text-transform:uppercase;'
+                        f'letter-spacing:0.06em;margin-bottom:10px;">{source_text}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.link_button("🔗 Visit Website", r.get("website", "#"), use_container_width=True)
+
+    # ── HUMAN-IN-THE-LOOP ─────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="section-header-gold" style="margin-top:24px;">
+      <span>✅</span> HUMAN-IN-THE-LOOP REVIEW
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background:white;padding:24px 32px;border-left:5px solid #F5A623;">
+      <p style="font-weight:700;color:#0D3B7A;margin:0 0 8px 0;font-size:0.95rem;">
+        ⚠️ Social Worker Review Required Before Referral
+      </p>
+      <p style="color:#5A6A80;font-size:0.85rem;margin:0;line-height:1.6;">
+        All matched resources must be reviewed by a licensed social worker or patient navigator
+        before any referral is sent to the patient. Verify availability, eligibility requirements,
+        and current contact information before proceeding.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_approve, col_flag = st.columns(2)
+    with col_approve:
+        if st.button("✅  Approve & Send Referral to Patient"):
+            st.success("✅ Referral approved. A navigator will follow up within 24 hours.")
+    with col_flag:
+        if st.button("🚩  Flag for Additional Review"):
+            st.warning("🚩 Case flagged. A senior navigator will review before sending.")
+
+    # ── PATIENT CARE NOTES ────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="section-header" style="margin-top:24px;">
+      <span>📝</span> ADD RESOURCES TO PATIENT CARE NOTES
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background:white;padding:16px 32px 4px;border-bottom:1px solid #E8EFF8;">
+      <p style="color:#5A6A80;font-size:0.85rem;margin:0;line-height:1.6;">
+        Select the resources to include, add navigator comments, then generate a formatted
+        note ready to paste into the patient record.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.container():
+        st.markdown("<div style='background:white;padding:20px 32px;'>", unsafe_allow_html=True)
+
+        resource_options = [r["name"] for r in resources]
+        selected_resources = st.multiselect(
+            "Select resources to include in care notes:",
+            options=resource_options,
+            default=resource_options[:min(3, len(resource_options))],
+        )
+
+        nav_notes = st.text_area(
+            "Navigator Comments / Additional Notes:", height=110,
+            placeholder=(
+                "e.g. Patient contacted Good Samaritan Health Center — "
+                "appointment scheduled for next Tuesday. Will follow up on "
+                "LIHEAP application in 5 business days..."
+            )
+        )
+
+        priority = st.selectbox(
+            "Care Note Priority:",
+            ["🟢 Routine", "🟡 Elevated", "🔴 Urgent"],
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.button("📄  Generate Patient Care Note"):
+        if not selected_resources:
+            st.warning("⚠️ Please select at least one resource.")
         else:
-            st.warning(
-                "Please complete the patient profile and add advocate "
-                "notes before uploading to chart."
+            pi   = st.session_state.patient_info
+            now  = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
+            prio = priority.split(" ", 1)[1] if " " in priority else priority
+            sel_r = [r for r in resources if r["name"] in selected_resources]
+
+            # Build income string safely
+            income_str = (
+                f"${profile['income_monthly_usd']:,.0f}"
+                if profile.get("income_monthly_usd") else "Not recorded"
             )
 
-st.markdown('</div>', unsafe_allow_html=True)
+            lines = [
+                "VARTIS CARE AI — PATIENT CARE NOTE",
+                f"Generated : {now}",
+                f"Priority  : {prio}",
+                "=" * 60,
+                "",
+                "PATIENT INFORMATION",
+                "-" * 40,
+                f"  Case ID          : {pi.get('case_id') or 'Not recorded'}",
+                f"  Patient Name     : {pi.get('patient_name') or 'Not recorded'}",
+                f"  Date of Birth    : {pi.get('dob') or 'Not recorded'}",
+                f"  ZIP Code         : {pi.get('zip_code') or profile.get('zip_code') or 'Not recorded'}",
+                f"  Insurance Name   : {pi.get('insurance_name') or 'Not recorded'}",
+                f"  Insurance ID     : {pi.get('insurance_id') or 'Not recorded'}",
+                f"  Navigator        : {pi.get('navigator') or 'Not recorded'}",
+                f"  Facility         : {pi.get('facility') or 'Not recorded'}",
+                f"  Visit Date       : {pi.get('visit_date') or 'Not recorded'}",
+                "",
+                "EXTRACTED ELIGIBILITY PROFILE",
+                "-" * 40,
+                f"  Age              : {profile.get('age') or 'Not recorded'}",
+                f"  Gender           : {(profile.get('gender') or 'Not recorded').title()}",
+                f"  Monthly Income   : {income_str}",
+                f"  Insurance Status : {(profile.get('insurance_status') or 'unknown').title()}",
+                f"  Household Size   : {profile.get('household_size') or 'Not recorded'}",
+                f"  Identified Needs : {', '.join(profile.get('needs') or []) or 'None identified'}",
+                "",
+                "REFERRED COMMUNITY RESOURCES",
+                "-" * 40,
+            ]
+
+            for i, r in enumerate(sel_r, 1):
+                m = NEED_META.get(r["need_type"], {})
+                lines += [
+                    f"  {i}. {r['name']}",
+                    f"     Category  : {m.get('label', r['need_type'])}",
+                    f"     Address   : {r.get('address', 'N/A')}",
+                    f"     Phone     : {r.get('phone') or 'N/A'}",
+                    f"     Website   : {r.get('website', 'N/A')}",
+                    f"     Confidence: {r.get('confidence', 0):.0%}",
+                    "",
+                ]
+
+            if nav_notes.strip():
+                lines += [
+                    "NAVIGATOR COMMENTS",
+                    "-" * 40,
+                    f"  {nav_notes.strip()}",
+                    "",
+                ]
+
+            lines += [
+                "=" * 60,
+                "Note generated by Vartis Care AI and reviewed by a licensed",
+                "social worker prior to patient delivery.",
+                "CSC 7644: Applied LLM Development — Chantel Walker, LSU",
+            ]
+
+            final_note = "\n".join(lines)
+            st.success("✅ Care note generated successfully!")
+            st.text_area(
+                "Patient Care Note — copy and paste into patient record:",
+                value=final_note, height=420
+            )
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+            st.download_button(
+                label="⬇️  Download Care Note (.txt)",
+                data=final_note,
+                file_name=f"vartis_care_note_{ts}.txt",
+                mime="text/plain",
+            )
+
+
+# ── FOOTER ────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="vartis-footer">
+  <div class="footer-left">Vartis Care AI &nbsp;·&nbsp; Resource Navigator</div>
+  <div class="footer-right">
+    CSC 7644: Applied LLM Development &nbsp;·&nbsp; Louisiana State University &nbsp;·&nbsp; Chantel Walker
+  </div>
+</div>
+""", unsafe_allow_html=True)
