@@ -176,20 +176,24 @@ ALL_RESOURCES = [
 # ── NEED TYPE KEYWORD MAP ─────────────────────────────────────────────────────
 NEED_KEYWORD_MAP = {
     "MEDICATION":  ["medication", "prescription", "drug", "medicine", "pharmacy",
-                    "metformin", "lisinopril", "insulin", "pill"],
-    "MEDICAL":     ["medical", "doctor", "clinic", "health", "diabetes", "hypertension",
-                    "blood pressure", "care", "hospital", "diagnosis", "treatment"],
+                    "metformin", "lisinopril", "insulin", "pill", "cannot afford medications",
+                    "can't afford medications", "afford meds"],
+    "MEDICAL":     ["medical", "doctor", "clinic", "health", "blood pressure",
+                    "care", "hospital", "treatment", "uninsured", "no insurance"],
     "FOOD":        ["food", "hungry", "hunger", "meal", "eat", "groceries",
-                    "pantry", "nutrition", "snap", "food stamp"],
+                    "pantry", "nutrition", "snap", "food stamp", "cannot afford food",
+                    "food insecure"],
     "UTILITY":     ["utility", "electric", "power", "gas", "heat", "water", "bill",
-                    "shutoff", "disconnection", "energy", "liheap"],
+                    "shutoff", "disconnection", "energy", "liheap", "behind on utilities",
+                    "utilities"],
     "RENT":        ["rent", "eviction", "landlord", "behind on rent", "lease",
-                    "evict", "payment", "housing payment"],
+                    "evict", "housing payment", "months behind", "behind in rent"],
     "HOUSING":     ["homeless", "shelter", "housing", "transitional", "evicted",
-                    "no home", "sleep", "nowhere to go", "street"],
+                    "no home", "sleep", "nowhere to go", "street", "unstable housing"],
     "EMPLOYMENT":  ["job", "work", "employment", "unemployed", "career", "training",
-                    "laid off", "income", "hire", "resume"],
-    "CLOTHING":    ["clothing", "clothes", "wear", "dress", "outfit", "wardrobe"],
+                    "laid off", "no income", "hire", "resume", "looking for work"],
+    "CLOTHING":    ["clothing", "clothes", "wear", "dress", "outfit", "wardrobe",
+                    "need clothes"],
 }
 
 
@@ -198,25 +202,24 @@ NEED_KEYWORD_MAP = {
 def _extract_profile_with_claude(text: str) -> dict:
     """
     Use Claude 3.5 Sonnet to extract a structured eligibility profile
-    from a free-text patient intake note.
+    from a free-text patient intake note. Diagnoses are excluded.
 
     Args:
         text (str): Raw intake note text.
 
     Returns:
-        dict: Structured profile with income, zip, diagnoses, needs, etc.
+        dict: Structured profile with income, zip, insurance, needs, etc.
     """
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
     system_prompt = """
 You are a clinical data extraction assistant for a healthcare social-work platform.
-Read the patient intake note and extract a structured eligibility profile.
+Read the patient intake note carefully and extract a structured eligibility profile.
 
 Return ONLY valid JSON with exactly these keys (use null if unknown):
 {
   "income_monthly_usd": <number or null>,
   "zip_code": <string or null>,
-  "diagnoses": [<string>, ...],
   "insurance_status": <"uninsured" | "medicaid" | "medicare" | "private" | "unknown">,
   "household_size": <number or null>,
   "age": <number or null>,
@@ -224,14 +227,27 @@ Return ONLY valid JSON with exactly these keys (use null if unknown):
   "needs": [<string>, ...]
 }
 
-For "needs", choose from this list based on what the note describes:
+For "needs", choose ONLY from this exact list based on what the note explicitly describes:
 MEDICATION, MEDICAL, FOOD, UTILITY, RENT, HOUSING, EMPLOYMENT, CLOTHING
+
+Rules for need selection:
+- MEDICATION: patient mentions needing or cannot afford prescriptions or medications
+- MEDICAL: patient needs a doctor, clinic, or healthcare services
+- FOOD: patient mentions hunger, food insecurity, or cannot afford food
+- UTILITY: patient mentions utility bills, shutoff notices, energy costs
+- RENT: patient is behind on rent or facing eviction
+- HOUSING: patient is homeless or has unstable housing
+- EMPLOYMENT: patient is unemployed or seeking work
+- CLOTHING: patient needs clothing assistance
+
+Be precise. Only include needs that are clearly stated or strongly implied in the note.
+Do NOT include a need just because a diagnosis exists — focus on what the patient actually needs help with.
 
 Return ONLY the JSON object. No extra text.
 """
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=1024,
         system=system_prompt,
         messages=[{"role": "user", "content": text}],
@@ -242,12 +258,10 @@ Return ONLY the JSON object. No extra text.
     try:
         profile = json.loads(raw)
     except json.JSONDecodeError:
-        # Fallback: return minimal profile if parsing fails
         logger.warning("Claude returned non-JSON response: %s", raw)
         profile = {
             "income_monthly_usd": None,
             "zip_code": None,
-            "diagnoses": [],
             "insurance_status": "unknown",
             "household_size": None,
             "age": None,
@@ -255,67 +269,65 @@ Return ONLY the JSON object. No extra text.
             "needs": [],
         }
 
+    # Ensure diagnoses key is never present
+    profile.pop("diagnoses", None)
+
     return profile
 
 
 # ── STAGE 2: RAG MATCHING ─────────────────────────────────────────────────────
 
-def _match_resources(profile: dict) -> tuple[list[dict], float]:
+def _match_resources(profile: dict, note_text: str = "") -> tuple[list[dict], float]:
     """
     Match resources from the internal corpus based on the patient's
-    identified needs using keyword-based retrieval (RAG simulation).
+    identified needs. Uses Claude-extracted needs as the primary signal,
+    with keyword fallback on the raw note text.
 
     Args:
         profile (dict): Structured eligibility profile from Claude.
+        note_text (str): Original intake note for secondary keyword scan.
 
     Returns:
         tuple: (list of matched resources with confidence, mean confidence)
     """
+    # Primary signal: needs Claude identified
     needs = [n.upper() for n in (profile.get("needs") or [])]
-    diagnoses_text = " ".join(profile.get("diagnoses") or []).lower()
-    note_text = diagnoses_text
-
-    # If Claude identified specific needs, use them directly
-    # Also scan diagnoses for additional need signals
     detected_needs = set(needs)
 
+    # Secondary signal: scan raw note text for need keywords
+    note_lower = note_text.lower()
     for need_type, keywords in NEED_KEYWORD_MAP.items():
         for kw in keywords:
-            if kw in note_text:
+            if kw in note_lower:
                 detected_needs.add(need_type)
+                break  # one match per need type is enough
 
-    # If nothing detected, return all resources
+    # If nothing detected at all, surface all resources as fallback
     if not detected_needs:
-        matched = [
-            {**r, "confidence": 0.75}
-            for r in ALL_RESOURCES
-        ]
-        return matched, 0.75
+        matched = [{**r, "confidence": 0.70} for r in ALL_RESOURCES]
+        return matched, 0.70
 
     matched = []
     for resource in ALL_RESOURCES:
-        if resource["need_type"] in detected_needs:
-            # Score based on keyword overlap with resource keywords
-            resource_keywords = resource.get("keywords", [])
-            overlap = sum(
-                1 for kw in resource_keywords
-                if kw in note_text or any(
-                    kw in need.lower() for need in detected_needs
-                )
-            )
-            base_confidence = 0.85
-            bonus = min(overlap * 0.02, 0.12)
-            confidence = round(min(base_confidence + bonus, 0.98), 2)
+        if resource["need_type"] not in detected_needs:
+            continue  # only include resources matching detected needs
 
-            matched.append({
-                "need_type": resource["need_type"],
-                "name": resource["name"],
-                "address": resource["address"],
-                "website": resource["website"],
-                "phone": resource.get("phone", ""),
-                "source": resource["source"],
-                "confidence": confidence,
-            })
+        # Score by keyword overlap between resource keywords and note text
+        resource_keywords = resource.get("keywords", [])
+        overlap = sum(1 for kw in resource_keywords if kw in note_lower)
+        base_confidence = 0.87
+        bonus = min(overlap * 0.02, 0.10)
+        confidence = round(min(base_confidence + bonus, 0.98), 2)
+
+        matched.append({
+            "need_type": resource["need_type"],
+            "name": resource["name"],
+            "address": resource["address"],
+            "website": resource["website"],
+            "phone": resource.get("phone", ""),
+            "source": resource["source"],
+            "confidence": confidence,
+        })
 
     mean_confidence = (
         sum(r["confidence"] for r in matched) / len(matched)
@@ -332,9 +344,6 @@ def _agentic_fallback(profile: dict) -> list[dict]:
     Simulate agentic fallback to FindHelp.org and 211 when internal
     retrieval confidence is low. Returns supplemental resources.
 
-    In production this would call the FindHelp.org and 211 APIs directly.
-    Here we return curated fallback resources tagged as findhelp_api.
-
     Args:
         profile (dict): Structured eligibility profile.
 
@@ -342,7 +351,6 @@ def _agentic_fallback(profile: dict) -> list[dict]:
         list[dict]: Additional resources from external sources.
     """
     needs = [n.upper() for n in (profile.get("needs") or [])]
-
     fallback_resources = []
 
     if "HOUSING" in needs or "RENT" in needs:
@@ -398,13 +406,12 @@ def extract_info(text: str) -> dict:
     """
     Run the full three-stage Vartis Care AI pipeline on a patient intake note.
 
-    Stage 1: Claude 3.5 Sonnet extracts structured eligibility profile.
-    Stage 2: Keyword-based RAG matches internal corpus resources.
+    Stage 1: Claude 3.5 Sonnet extracts structured eligibility profile (no diagnoses).
+    Stage 2: Needs-exact RAG matches only relevant internal corpus resources.
     Stage 3: Agentic fallback supplements results if confidence is low.
 
     Args:
-        text (str): Raw patient intake note. Pass empty string to load
-                    all resources without LLM extraction.
+        text (str): Raw patient intake note.
 
     Returns:
         dict: {
@@ -414,13 +421,10 @@ def extract_info(text: str) -> dict:
             "fallback_triggered": bool
         }
     """
-    # If no text provided, return full resource list with default profile
     if not text.strip():
         return {
             "profile": {},
-            "matched_resources": [
-                {**r, "confidence": 0.88} for r in ALL_RESOURCES
-            ],
+            "matched_resources": [{**r, "confidence": 0.88} for r in ALL_RESOURCES],
             "mean_confidence": 0.88,
             "fallback_triggered": False,
         }
@@ -432,13 +436,13 @@ def extract_info(text: str) -> dict:
         logger.error("Claude extraction failed: %s", e)
         profile = {
             "income_monthly_usd": None, "zip_code": None,
-            "diagnoses": [], "insurance_status": "unknown",
+            "insurance_status": "unknown",
             "household_size": None, "age": None,
             "gender": None, "needs": [],
         }
 
-    # Stage 2 — RAG matching
-    matched, mean_confidence = _match_resources(profile)
+    # Stage 2 — Needs-exact RAG matching
+    matched, mean_confidence = _match_resources(profile, note_text=text)
 
     # Stage 3 — Agentic fallback if confidence is low
     fallback_triggered = False
@@ -451,7 +455,7 @@ def extract_info(text: str) -> dict:
                     matched.append(r)
             fallback_triggered = True
 
-    # Sort by confidence
+    # Sort by confidence descending
     matched.sort(key=lambda r: r["confidence"], reverse=True)
 
     return {
