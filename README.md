@@ -22,7 +22,7 @@ CSC 7644: Applied LLM Development at Louisiana State University.
 - Evaluation using DeepEval targeting 95% faithfulness and 80% recall
 
 ## Tech Stack and Architecture
-- **Model:** Claude 3.5 Sonnet via Anthropic API
+- **Model:** claude-3-5-sonnet-20241022 via Anthropic API
 - **Vector Store:** ChromaDB (locally hosted)
 - **External Tools:** FindHelp.org API, 211 National Data Platform,
   NPPES NPI Registry, ASPE Poverty Guidelines
