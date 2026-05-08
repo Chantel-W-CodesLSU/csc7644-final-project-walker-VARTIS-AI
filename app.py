@@ -162,27 +162,21 @@ with st.container():
     pi_col1, pi_col2, pi_col3 = st.columns(3)
 
     with pi_col1:
-        case_id        = st.text_input("Case ID",               placeholder="e.g. VC-2025-0042")
-        patient_name   = st.text_input("Patient Full Name",     placeholder="e.g. Jane Doe")
-        dob            = st.text_input("Date of Birth",         placeholder="MM/DD/YYYY")
+        st.text_input("Case ID",               placeholder="e.g. VC-2025-0042",          key="pi_case_id")
+        st.text_input("Patient Full Name",     placeholder="e.g. Jane Doe",              key="pi_patient_name")
+        st.text_input("Date of Birth",         placeholder="MM/DD/YYYY",                 key="pi_dob")
 
     with pi_col2:
-        zip_code       = st.text_input("ZIP Code",              placeholder="e.g. 30318")
-        insurance_name = st.text_input("Insurance Name",        placeholder="e.g. Medicaid, Aetna, None")
-        insurance_id   = st.text_input("Insurance ID / Member #", placeholder="Optional")
+        st.text_input("ZIP Code",              placeholder="e.g. 30318",                 key="pi_zip_code")
+        st.text_input("Insurance Name",        placeholder="e.g. Medicaid, Aetna, None", key="pi_insurance_name")
+        st.text_input("Insurance ID / Member #", placeholder="Optional",                 key="pi_insurance_id")
 
     with pi_col3:
-        navigator_name = st.text_input("Navigator / Social Worker", placeholder="Your name")
-        facility       = st.text_input("Facility / Clinic",         placeholder="e.g. Grady Memorial Hospital")
-        visit_date     = st.text_input("Visit Date",                placeholder="MM/DD/YYYY")
+        st.text_input("Navigator / Social Worker", placeholder="Your name",              key="pi_navigator")
+        st.text_input("Facility / Clinic",         placeholder="e.g. Grady Memorial Hospital", key="pi_facility")
+        st.text_input("Visit Date",                placeholder="MM/DD/YYYY",             key="pi_visit_date")
 
     st.markdown("</div>", unsafe_allow_html=True)
-
-st.session_state.patient_info = {
-    "case_id": case_id, "patient_name": patient_name, "dob": dob,
-    "zip_code": zip_code, "insurance_name": insurance_name, "insurance_id": insurance_id,
-    "navigator": navigator_name, "facility": facility, "visit_date": visit_date,
-}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -500,7 +494,17 @@ if st.session_state.result:
         if not selected_resources:
             st.warning("⚠️ Please select at least one resource.")
         else:
-            pi   = st.session_state.patient_info
+            # Read patient info directly from session_state keys — always current
+            pi_case_id       = st.session_state.get("pi_case_id", "") or "Not recorded"
+            pi_patient_name  = st.session_state.get("pi_patient_name", "") or "Not recorded"
+            pi_dob           = st.session_state.get("pi_dob", "") or "Not recorded"
+            pi_zip           = st.session_state.get("pi_zip_code", "") or profile.get("zip_code") or "Not recorded"
+            pi_ins_name      = st.session_state.get("pi_insurance_name", "") or "Not recorded"
+            pi_ins_id        = st.session_state.get("pi_insurance_id", "") or "Not recorded"
+            pi_navigator     = st.session_state.get("pi_navigator", "") or "Not recorded"
+            pi_facility      = st.session_state.get("pi_facility", "") or "Not recorded"
+            pi_visit_date    = st.session_state.get("pi_visit_date", "") or "Not recorded"
+
             now  = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
             prio = priority.split(" ", 1)[1] if " " in priority else priority
             sel_r = [r for r in resources if r["name"] in selected_resources]
@@ -519,15 +523,15 @@ if st.session_state.result:
                 "",
                 "PATIENT INFORMATION",
                 "-" * 40,
-                f"  Case ID          : {pi.get('case_id') or 'Not recorded'}",
-                f"  Patient Name     : {pi.get('patient_name') or 'Not recorded'}",
-                f"  Date of Birth    : {pi.get('dob') or 'Not recorded'}",
-                f"  ZIP Code         : {pi.get('zip_code') or profile.get('zip_code') or 'Not recorded'}",
-                f"  Insurance Name   : {pi.get('insurance_name') or 'Not recorded'}",
-                f"  Insurance ID     : {pi.get('insurance_id') or 'Not recorded'}",
-                f"  Navigator        : {pi.get('navigator') or 'Not recorded'}",
-                f"  Facility         : {pi.get('facility') or 'Not recorded'}",
-                f"  Visit Date       : {pi.get('visit_date') or 'Not recorded'}",
+                f"  Case ID          : {pi_case_id}",
+                f"  Patient Name     : {pi_patient_name}",
+                f"  Date of Birth    : {pi_dob}",
+                f"  ZIP Code         : {pi_zip}",
+                f"  Insurance Name   : {pi_ins_name}",
+                f"  Insurance ID     : {pi_ins_id}",
+                f"  Navigator        : {pi_navigator}",
+                f"  Facility         : {pi_facility}",
+                f"  Visit Date       : {pi_visit_date}",
                 "",
                 "EXTRACTED ELIGIBILITY PROFILE",
                 "-" * 40,
@@ -587,6 +591,12 @@ if st.session_state.result:
 # ── FOOTER ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="vartis-footer">
+  <div class="footer-left">Vartis Care AI &nbsp;·&nbsp; Resource Navigator</div>
+  <div class="footer-right">
+    CSC 7644: Applied LLM Development &nbsp;·&nbsp; Louisiana State University &nbsp;·&nbsp; Chantel Walker
+  </div>
+</div>
+""", unsafe_allow_html=True)
   <div class="footer-left">Vartis Care AI &nbsp;·&nbsp; Resource Navigator</div>
   <div class="footer-right">
     CSC 7644: Applied LLM Development &nbsp;·&nbsp; Louisiana State University &nbsp;·&nbsp; Chantel Walker
