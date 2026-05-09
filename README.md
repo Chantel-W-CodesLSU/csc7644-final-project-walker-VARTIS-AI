@@ -1,3 +1,12 @@
+![Vartis Care AI](https://img.shields.io/badge/Vartis%20Care%20AI-Healthcare%20Resource%20Navigator-1a4d2e?style=for-the-badge&logo=heart&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python)
+![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-red?style=for-the-badge&logo=streamlit)
+![Claude](https://img.shields.io/badge/Claude%203.5%20Sonnet-Anthropic-orange?style=for-the-badge)
+![LSU](https://img.shields.io/badge/LSU-CSC%207644-461D7C?style=for-the-badge)
+
+
+
+
 # Vartis Care AI
 ### CSC 7644: Applied LLM Development | Final Project
 **Author: Chantel Walker | Louisiana State University | Spring 2026**
